@@ -3,12 +3,9 @@ import logger from '../config/logger.js';
 
 export async function generateJWT() {
   try {
-    const secret =
-      process.env.JWT_SECRET ||
-      'Xy9vA$23k!ZbLp@76JrQmEwTn$HsDfGuIoPaLzXcVbNmQwErTyUiOp1234567890';
+    const secret = process.env.JWT_SECRET;
     const payload = {
-      key:
-        process.env.SERVICE_KEY || 'a7b9c2d8e4f0g1h2i3j4k5l6m7n8o9p0q1r2s3t4',
+      key: process.env.SERVICE_KEY,
       issuer: 'appointment-service',
       issuedAt: Math.floor(Date.now() / 1000),
     };
