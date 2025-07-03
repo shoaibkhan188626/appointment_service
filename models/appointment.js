@@ -135,3 +135,63 @@ const appointmentSchema = new mongoose.Schema(
     toObject: { virtuals: true },
   }
 );
+
+appointmentSchema.virtual('endTime').get(function () {
+  return new Date(this.date.getTime() + this.duration * 60 * 100);
+});
+
+appointmentSchema.index({ doctorId: 1, date: 1, deleted: 1 });
+
+appointmentSchema.pre('save', async function (next) {
+  if (
+    this.isNew ||
+    this.isModified('date') ||
+    this.isModified('doctorId') ||
+    this.isModified('duration')
+  ) {
+    const startTime = this.date;
+    const endTime = new Date(startTime.getTime() + this.duration * 60 * 100);
+    const conflicting = await this.constructor.findOne({
+      doctorId: this.doctorId,
+      deleted: false,
+      status: { $ne: 'cancelled' },
+      _id: { $ne: this._id },
+      date: {
+        $lte: endTime,
+        $gte: new Date(startTime.getTime() - 120 * 60 * 1000),
+      },
+    });
+    if (conflicting) {
+      const error = new Error(
+        `Doctor unavailable from ${startTime} to ${endTime}`
+      );
+      error.statusCode = 409;
+      return next(error);
+    }
+  }
+  next();
+});
+
+appointmentSchema.pre('findOneAndUpdate', async function (next) {
+  const update = this.getUpdate();
+  if (update.deleted === true) {
+    update.status = 'cancelled';
+    update.updatedBy = update.updatedBy || 'system';
+    update.updatedAt = Date.now();
+  }
+  next();
+});
+
+appointmentSchema.post('save', function (doc) {
+  console.log(`Appointment ${doc.appointmentId} saved by ${doc.createdBy}`);
+});
+
+appointmentSchema.pre('find', function () {
+  this.where({ deleted: false });
+});
+
+appointmentSchema.pre('findOne', function () {
+  this.where({ deleted: false });
+});
+
+export default mongoose.model('Appointment', appointmentSchema);
