@@ -80,7 +80,7 @@ const appointmentSchema = new mongoose.Schema(
       index: true,
     },
 
-    content: {
+    consent: {
       type: {
         given: { type: Boolean, default: false },
         purpose: {
