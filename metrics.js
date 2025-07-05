@@ -51,8 +51,15 @@ export const metricsMiddleware = (req, res, next) => {
     }
 
     // Increment recurring appointments counter for successful POST with recurrence
-    if (req.method === 'POST' && route.includes('/api/v1/appointments') && res.statusCode === 201 && req.body.recurrence?.type) {
-      recurringAppointmentsCounter.labels(req.body.recurrence.type).inc(res.get('X-Recurring-Count') || 1);
+    if (
+      req.method === 'POST' &&
+      route.includes('/api/v1/appointments') &&
+      res.statusCode === 201 &&
+      req.body.recurrence?.type
+    ) {
+      recurringAppointmentsCounter
+        .labels(req.body.recurrence.type)
+        .inc(res.get('X-Recurring-Count') || 1);
     }
 
     logger.info(`Request processed: ${req.method} ${route}`, {
@@ -62,13 +69,4 @@ export const metricsMiddleware = (req, res, next) => {
   });
 
   next();
-};
-
-// Endpoint to expose metrics
-export const metricsEndpoint = (req, res) => {
-  res.set('Content-Type', client.register.contentType);
-  client.register.metrics().then(metrics => res.send(metrics)).catch(err => {
-    logger.error(`Failed to serve metrics: ${err.message}`, { stack: err.stack });
-    res.status(500).send('Error retrieving metrics');
-  });
 };

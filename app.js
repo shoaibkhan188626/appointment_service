@@ -1,13 +1,13 @@
 import express from 'express';
 import helmet from 'helmet';
 import dotenv from 'dotenv';
-
+import swaggerUi from 'swagger-ui-express';
 import connectDB from './config/database.js';
 import logger from './config/logger.js';
 import appointmentRoutes from './routes/appointment.routes.js';
 import errorHandler from './midlewares/ErrorHandler.js';
-
-import { metricsMiddleware, metricsEndpoint } from './metrics.js';
+import swaggerSpec from './docs/swagger.js';
+import { metricsMiddleware } from './metrics.js';
 
 // Initialize environment variables
 dotenv.config();
@@ -18,6 +18,15 @@ const app = express();
 // Apply security headers
 app.use(helmet());
 
+// Request timeout (30s) to prevent hanging requests
+app.use((req, res, next) => {
+  res.setTimeout(30000, () => {
+    logger.error(`Request timed out: ${req.method} ${req.originalUrl}`);
+    res.status(504).json({ status: 'fail', message: 'Request timed out' });
+  });
+  next();
+});
+
 // Parse JSON bodies
 app.use(express.json({ limit: '10kb' })); // Limit payload size for security
 
@@ -25,15 +34,11 @@ app.use(express.json({ limit: '10kb' })); // Limit payload size for security
 app.use(metricsMiddleware);
 
 // Serve Swagger UI
-
-// Metrics endpoint for Prometheus
-app.get('/metrics', metricsEndpoint);
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 
 // Connect to MongoDB
-connectDB().catch((err) => {
-  logger.error(
-    `Failed to start server due to MongoDB connection error: ${err.message}`
-  );
+connectDB().catch(err => {
+  logger.error(`Failed to start server due to MongoDB connection error: ${err.message}`);
   process.exit(1);
 });
 

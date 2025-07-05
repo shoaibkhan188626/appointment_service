@@ -13,7 +13,12 @@ import CustomError from '../utils/error.js';
 import logger from '../config/logger.js';
 import { v4 as uuidv4 } from 'uuid';
 
-// Helper function to generate recurring appointments
+/**
+ * Generates recurring appointments based on recurrence settings
+ * @param {Object} baseAppointment - Base appointment object
+ * @param {Object} recurrence - Recurrence settings (type, interval, endDate)
+ * @returns {Array} Array of appointment objects
+ */
 const generateRecurringAppointments = async (baseAppointment, recurrence) => {
   const { type, interval, endDate } = recurrence;
   const appointments = [];
@@ -39,7 +44,61 @@ const generateRecurringAppointments = async (baseAppointment, recurrence) => {
   return appointments;
 };
 
-// Create a new appointment
+/**
+ * @swagger
+ * /api/v1/appointments:
+ *   post:
+ *     summary: Create a new appointment
+ *     description: Creates one or more appointments (for recurring schedules). Patients can only create for themselves. Doctors must be KYC-verified (Telemedicine Guidelines). Rate limited to 50 requests/15min (25 for recurring). Returns X-Recurring-Count header for recurring appointments.
+ *     tags: [Appointments]
+ *     security:
+ *       - BearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/Appointment'
+ *     responses:
+ *       201:
+ *         description: Appointment(s) created successfully
+ *         headers:
+ *           X-Recurring-Count:
+ *             description: Number of recurring appointments created
+ *             schema:
+ *               type: integer
+ *               example: 5
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: success
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     $ref: '#/components/schemas/Appointment'
+ *       400:
+ *         description: Validation error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       403:
+ *         description: Forbidden (RBAC or KYC failure)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       409:
+ *         description: Doctor unavailable (conflict)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
 export const createAppointment = async (req, res, next) => {
   try {
     // Validate input
@@ -172,7 +231,116 @@ export const createAppointment = async (req, res, next) => {
   }
 };
 
-// Get all appointments with filtering and pagination
+/**
+ * @swagger
+ * /api/v1/appointments:
+ *   get:
+ *     summary: Get all appointments
+ *     description: Retrieves appointments with filtering and pagination. Patients see only their appointments, doctors see their own, admins see all. Rate limited to 200 requests/15min.
+ *     tags: [Appointments]
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: patientId
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *         description: Filter by patient ID (admin only)
+ *       - in: query
+ *         name: doctorId
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *         description: Filter by doctor ID (admin only)
+ *       - in: query
+ *         name: hospitalId
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *         description: Filter by hospital ID
+ *       - in: query
+ *         name: status
+ *         schema:
+ *           type: string
+ *           enum: [scheduled, completed, cancelled]
+ *         description: Filter by status
+ *       - in: query
+ *         name: type
+ *         schema:
+ *           type: string
+ *           enum: [in-person, telemedicine]
+ *         description: Filter by appointment type
+ *       - in: query
+ *         name: startDate
+ *         schema:
+ *           type: string
+ *           format: date-time
+ *         description: Filter by start date
+ *       - in: query
+ *         name: endDate
+ *         schema:
+ *           type: string
+ *           format: date-time
+ *         description: Filter by end date
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           default: 1
+ *         description: Page number
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           maximum: 100
+ *           default: 10
+ *         description: Number of results per page
+ *     responses:
+ *       200:
+ *         description: List of appointments
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: success
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     $ref: '#/components/schemas/Appointment'
+ *                 meta:
+ *                   type: object
+ *                   properties:
+ *                     total:
+ *                       type: integer
+ *                       example: 50
+ *                     page:
+ *                       type: integer
+ *                       example: 1
+ *                     limit:
+ *                       type: integer
+ *                       example: 10
+ *                     pages:
+ *                       type: integer
+ *                       example: 5
+ *       400:
+ *         description: Query validation error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       403:
+ *         description: Forbidden (RBAC)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
 export const getAppointments = async (req, res, next) => {
   try {
     // Validate query parameters
@@ -256,7 +424,55 @@ export const getAppointments = async (req, res, next) => {
   }
 };
 
-// Get a single appointment by ID
+/**
+ * @swagger
+ * /api/v1/appointments/{id}:
+ *   get:
+ *     summary: Get an appointment by ID
+ *     description: Retrieves a single appointment by UUID. Patients and doctors see only their own appointments, admins see all. Rate limited to 200 requests/15min.
+ *     tags: [Appointments]
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *         required: true
+ *         description: Appointment UUID
+ *     responses:
+ *       200:
+ *         description: Appointment details
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: success
+ *                 data:
+ *                   $ref: '#/components/schemas/Appointment'
+ *       400:
+ *         description: Invalid ID format
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       404:
+ *         description: Appointment not found or access denied
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       403:
+ *         description: Forbidden (RBAC)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
 export const getAppointmentById = async (req, res, next) => {
   try {
     const { id } = req.params;
@@ -302,7 +518,104 @@ export const getAppointmentById = async (req, res, next) => {
   }
 };
 
-// Update an appointment
+/**
+ * @swagger
+ * /api/v1/appointments/{id}:
+ *   put:
+ *     summary: Update an appointment
+ *     description: Updates an appointment by UUID. Patients can only update their own appointments, admins can update any. Rate limited to 50 requests/15min.
+ *     tags: [Appointments]
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *         required: true
+ *         description: Appointment UUID
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               date:
+ *                 type: string
+ *                 format: date-time
+ *                 example: '2025-07-07T10:00:00Z'
+ *               duration:
+ *                 type: integer
+ *                 example: 30
+ *               type:
+ *                 type: string
+ *                 enum: [in-person, telemedicine]
+ *                 example: telemedicine
+ *               notes:
+ *                 type: string
+ *                 example: Updated notes
+ *               consent:
+ *                 type: object
+ *                 properties:
+ *                   given:
+ *                     type: boolean
+ *                     example: true
+ *                   purpose:
+ *                     type: string
+ *                     enum: [treatment, billing, research]
+ *                     example: treatment
+ *                   grantedAt:
+ *                     type: string
+ *                     format: date-time
+ *                     example: '2025-07-07T10:00:00Z'
+ *               recurrence:
+ *                 type: object
+ *                 properties:
+ *                   type:
+ *                     type: string
+ *                     enum: [daily, weekly, monthly, null]
+ *                     example: weekly
+ *                   interval:
+ *                     type: integer
+ *                     example: 1
+ *                   endDate:
+ *                     type: string
+ *                     format: date-time
+ *                     example: '2025-08-04T10:00:00Z'
+ *     responses:
+ *       200:
+ *         description: Appointment updated successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: success
+ *                 data:
+ *                   $ref: '#/components/schemas/Appointment'
+ *       400:
+ *         description: Validation error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       404:
+ *         description: Appointment not found or access denied
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       403:
+ *         description: Forbidden (RBAC)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
 export const updateAppointment = async (req, res, next) => {
   try {
     // Validate input
@@ -410,7 +723,56 @@ export const updateAppointment = async (req, res, next) => {
   }
 };
 
-// Cancel (soft delete) an appointment
+/**
+ * @swagger
+ * /api/v1/appointments/{id}:
+ *   delete:
+ *     summary: Cancel an appointment
+ *     description: Soft deletes an appointment by UUID (sets status to cancelled, deleted to true). Patients can only cancel their own appointments, admins can cancel any. Rate limited to 50 requests/15min.
+ *     tags: [Appointments]
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *         required: true
+ *         description: Appointment UUID
+ *     responses:
+ *       200:
+ *         description: Appointment cancelled successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: success
+ *                 message:
+ *                   type: string
+ *                   example: Appointment cancelled successfully
+ *       400:
+ *         description: Invalid ID format
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       404:
+ *         description: Appointment not found or access denied
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       403:
+ *         description: Forbidden (RBAC)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
 export const cancelAppointment = async (req, res, next) => {
   try {
     const { id } = req.params;
@@ -486,4 +848,70 @@ export const cancelAppointment = async (req, res, next) => {
     );
     next(err);
   }
+};
+
+/**
+ * @swagger
+ * /health:
+ *   get:
+ *     summary: Health check
+ *     description: Checks the health of the Appointment Service. Rate limited to 1000 requests/15min.
+ *     tags: [Health]
+ *     responses:
+ *       200:
+ *         description: Service is healthy
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: OK
+ *                 timestamp:
+ *                   type: string
+ *                   format: date-time
+ *                   example: '2025-07-06T01:00:00Z'
+ */
+export const healthCheck = async (req, res) => {
+  logger.info('Health check endpoint accessed');
+  res.json({ status: 'OK', timestamp: new Date().toISOString() });
+};
+
+/**
+ * @swagger
+ * /metrics:
+ *   get:
+ *     summary: Prometheus metrics
+ *     description: Exposes Prometheus metrics for monitoring (http_requests_total, http_request_duration_seconds, http_errors_total, recurring_appointments_created_total).
+ *     tags: [Metrics]
+ *     responses:
+ *       200:
+ *         description: Metrics data
+ *         content:
+ *           text/plain:
+ *             schema:
+ *               type: string
+ *               example: |
+ *                 http_requests_total{method="POST",route="/api/v1/appointments",status="201"} 5
+ *                 recurring_appointments_created_total{type="weekly"} 3
+ *       500:
+ *         description: Error retrieving metrics
+ *         content:
+ *           text/plain:
+ *             schema:
+ *               type: string
+ *               example: Error retrieving metrics
+ */
+export const metricsEndpoint = (req, res) => {
+  res.set('Content-Type', client.register.contentType);
+  client.register
+    .metrics()
+    .then((metrics) => res.send(metrics))
+    .catch((err) => {
+      logger.error(`Failed to serve metrics: ${err.message}`, {
+        stack: err.stack,
+      });
+      res.status(500).send('Error retrieving metrics');
+    });
 };

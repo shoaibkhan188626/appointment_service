@@ -9,9 +9,12 @@ import {
   getAppointmentById,
   updateAppointment,
   cancelAppointment,
+  healthCheck,
+  metricsEndpoint,
 } from '../controllers/appointment.controller.js';
 import logger from '../config/logger.js';
 import CustomError from '../utils/error.js';
+import { metricsMiddleware } from '../metrics.js';
 
 // Initialize router
 const router = express.Router();
@@ -79,15 +82,16 @@ const healthLimiter = rateLimit({
 // Apply global middlewares
 router.use(helmet()); // Security headers for DPDP Act
 router.use(loggerMiddleware); // Request logging for NDHM audit trails
+router.use(metricsMiddleware); // Metrics for monitoring
 
 // API version prefix
 const API_VERSION = '/api/v1';
 
 // Health check endpoint (public)
-router.get('/health', healthLimiter, (req, res) => {
-  logger.info('Health check endpoint accessed');
-  res.json({ status: 'OK', timestamp: new Date().toISOString() });
-});
+router.get('/health', healthLimiter, healthCheck);
+
+// Metrics endpoint (public)
+router.get('/metrics', metricsEndpoint);
 
 // Appointment routes with RBAC and rate limiting
 router
