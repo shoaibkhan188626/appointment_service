@@ -1,114 +1,90 @@
 import axios from 'axios';
 import logger from '../config/logger.js';
 import CustomError from '../utils/error.js';
-import { generateJWT } from '../utils/generate-jwt.js';
 
-
-export async function validateUser(userId, role, retries = 3, delay = 1000) {
-  const url = `${process.env.USER_SERVICE_URL}/api/users/${userId}`;
-  for (let i = 1; i <= retries; i++) {
-    try {
-      const token = await generateJWT();
-      const response = await axios.get(url, {
-        headers: { Authorization: `Bearer ${token}` },
+export const validateUser = async (userId, role) => {
+  try {
+    const response = await axios.get(
+      `${process.env.USER_SERVICE_URL}/api/users/${userId}`,
+      {
+        headers: { Authorization: `Bearer ${process.env.SERVICE_KEY}` },
         timeout: 5000,
-      });
-
-      const user = response.data.data;
-      if (user.role !== role) {
-        throw new CustomError(`User ${userId} is not a ${role}`, 400, {
-          userId,
-        });
       }
-
-      if (role === 'doctor' && !user.kycVerified) {
-        throw new CustomError(`Doctor KYC is not verified`, 403, { userId });
-      }
-      logger.info(`validated ${role} with ID ${userId}`);
-      return user;
-    } catch (err) {
-      logger.error(
-        `Attempt ${i} failed to validate user ${userId}:${err.message}`
+    );
+    const user = response.data.data;
+    if (user.role !== role) {
+      throw new CustomError(
+        `Invalid user role: expected ${role}, got ${user.role}`,
+        400
       );
-      if (i === retries) {
-        throw new CustomError(
-          `Failed to validate user ${userId}`,
-          err.response?.status || 500,
-          {
-            userId,
-            error: err.message,
-          }
-        );
-      }
-      await new Promise((resolve) => setTimeout(resolve, delay));
     }
+    return user;
+  } catch (err) {
+    logger.error(`Failed to validate user ${userId}: ${err.message}`, {
+      stack: err.stack,
+    });
+    throw new CustomError(
+      `User validation failed: ${err.message}`,
+      err.response?.status || 500
+    );
   }
-}
+};
 
-export async function validateHospital(hospitalId, retries = 3, delay = 1000) {
-  const url = `${process.env.HOSPITAL_SERVICE_URL}/api/hospitals/${hospitalId}`;
-  for (let i = 1; i <= retries; i++) {
-    try {
-      const token = await generateJWT();
-      await axios.get(url, {
-        headers: { Authorization: `Bearer ${token}` },
+export const validateHospital = async (hospitalId) => {
+  try {
+    const response = await axios.get(
+      `${process.env.HOSPITAL_SERVICE_URL}/api/hospitals/${hospitalId}`,
+      {
+        headers: { Authorization: `Bearer ${process.env.SERVICE_KEY}` },
         timeout: 5000,
-      });
-      logger.info(`Validated hospital with ID ${hospitalId}`);
-      return;
-    } catch (err) {
-      logger.error(
-        `Attempt ${i} failed to validate hospital ${hospitalId} : ${err.message}`
-      );
-      if (i === retries) {
-        throw new CustomError(
-          `Failed to validate hospital ${hospitalId}`,
-          err.response?.status || 500,
-          {
-            hospitalId,
-            error: err.message,
-          }
-        );
       }
-      await new Promise((resolve) => setTimeout(resolve, delay));
-    }
+    );
+    return response.data.data;
+  } catch (err) {
+    logger.error(`Failed to validate hospital ${hospitalId}: ${err.message}`, {
+      stack: err.stack,
+    });
+    throw new CustomError(
+      `Hospital validation failed: ${err.message}`,
+      err.response?.status || 500
+    );
   }
-}
+};
 
-export async function createNotification(
-  { type, recipient, subject, message, externalId },
-  retries = 3,
-  delay = 1000
-) {
-  const url = `${process.env.NOTIFICATION_SERVICE_URL}/api/notifications`;
-  for (let i = 1; i <= retries; i++) {
-    try {
-      const token = await generateJWT();
-      const response = await axios.post(
-        url,
-        { type, recipient, subject, message, externalId },
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-            'Content-Type': 'application/json',
-          },
-          timeout: 5000,
-        }
-      );
-      logger.info(
-        `Notification sent for appointment ${externalId} : ${type} to ${recipient}`
-      );
-      return response.data;
-    } catch (err) {
-      logger.error(
-        `Attempt ${i} failed to send notification for ${externalId}`,
-        err.response?.status || 500,
-        {
-          externalId,
-          error: err.message,
-        }
-      );
+export const createNotification = async ({
+  type,
+  recipient,
+  subject,
+  message,
+  externalId,
+  phoneNumber,
+}) => {
+  try {
+    const payload = { type, recipient, subject, message, externalId };
+    if (type === 'sms' && phoneNumber) {
+      payload.phoneNumber = phoneNumber;
     }
-    await new Promise((resolve) => setTimeout(resolve, delay));
+    const response = await axios.post(
+      `${process.env.NOTIFICATION_SERVICE_URL}/api/notifications`,
+      payload,
+      {
+        headers: { Authorization: `Bearer ${process.env.SERVICE_KEY}` },
+        timeout: 5000,
+      }
+    );
+    logger.info(`Notification sent: ${type} for ${externalId}`, {
+      recipient,
+      phoneNumber,
+    });
+    return response.data;
+  } catch (err) {
+    logger.error(
+      `Failed to send ${type} notification for ${externalId}: ${err.message}`,
+      { stack: err.stack }
+    );
+    throw new CustomError(
+      `Notification failed: ${err.message}`,
+      err.response?.status || 500
+    );
   }
-}
+};

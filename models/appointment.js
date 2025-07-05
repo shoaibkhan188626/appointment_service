@@ -1,5 +1,6 @@
 import mongoose from 'mongoose';
 import { v4 as uuidv4 } from 'uuid';
+import logger from '../config/logger.js';
 
 const appointmentSchema = new mongoose.Schema(
   {
@@ -10,7 +11,6 @@ const appointmentSchema = new mongoose.Schema(
       required: [true, 'Appointment ID is required'],
       immutable: true,
     },
-
     patientId: {
       type: String,
       required: [true, 'Patient ID is required'],
@@ -22,7 +22,6 @@ const appointmentSchema = new mongoose.Schema(
         message: 'Invalid Patient ID',
       },
     },
-
     doctorId: {
       type: String,
       required: [true, 'Doctor ID is required'],
@@ -34,7 +33,6 @@ const appointmentSchema = new mongoose.Schema(
         message: 'Invalid doctor ID',
       },
     },
-
     hospitalId: {
       type: String,
       required: [true, 'Hospital ID is required'],
@@ -46,10 +44,9 @@ const appointmentSchema = new mongoose.Schema(
         message: 'Invalid hospital ID',
       },
     },
-
     date: {
       type: Date,
-      required: [true, 'Appointment data is required'],
+      required: [true, 'Appointment date is required'],
       index: true,
       validate: {
         validator: function (value) {
@@ -58,28 +55,24 @@ const appointmentSchema = new mongoose.Schema(
         message: 'Appointment date must be in the future',
       },
     },
-
     duration: {
       type: Number,
       default: 30,
       min: [15, 'Duration must be at least 15 minutes'],
       max: [120, 'Duration cannot exceed 120 minutes'],
     },
-
     type: {
       type: String,
       enum: ['in-person', 'telemedicine'],
       default: 'in-person',
       required: [true, 'Appointment type is required'],
     },
-
     status: {
       type: String,
       enum: ['scheduled', 'completed', 'cancelled'],
       default: 'scheduled',
       index: true,
     },
-
     consent: {
       type: {
         given: { type: Boolean, default: false },
@@ -92,37 +85,53 @@ const appointmentSchema = new mongoose.Schema(
       },
       default: { given: false, purpose: 'treatment' },
     },
-
     notes: {
       type: String,
       trim: true,
       maxLength: [500, 'Notes cannot exceed 500 characters'],
       default: '',
     },
-
+    recurrence: {
+      type: {
+        type: String,
+        enum: ['daily', 'weekly', 'monthly', null],
+        default: null,
+      },
+      interval: {
+        type: Number,
+        min: [1, 'Recurrence interval must be at least 1'],
+        default: null,
+      },
+      endDate: {
+        type: Date,
+        default: null,
+        validate: {
+          validator: function (value) {
+            return !this.recurrence?.type || (value && value > this.date);
+          },
+          message: 'Recurrence end date must be after the appointment date',
+        },
+      },
+    },
     createdBy: {
       type: String,
       required: [true, 'Creator ID is required'],
       default: 'system',
     },
-
     updatedBy: {
       type: String,
-      required: [true, 'Update ID is required'],
+      required: [true, 'Updater ID is required'],
       default: 'system',
     },
-
     createdAt: {
       type: Date,
       default: Date.now,
       immutable: true,
     },
-
     updatedAt: {
       type: Date,
       default: Date.now,
     },
-
     deleted: {
       type: Boolean,
       default: false,
@@ -137,7 +146,7 @@ const appointmentSchema = new mongoose.Schema(
 );
 
 appointmentSchema.virtual('endTime').get(function () {
-  return new Date(this.date.getTime() + this.duration * 60 * 100);
+  return new Date(this.date.getTime() + this.duration * 60 * 1000);
 });
 
 appointmentSchema.index({ doctorId: 1, date: 1, deleted: 1 });
@@ -150,7 +159,7 @@ appointmentSchema.pre('save', async function (next) {
     this.isModified('duration')
   ) {
     const startTime = this.date;
-    const endTime = new Date(startTime.getTime() + this.duration * 60 * 100);
+    const endTime = new Date(startTime.getTime() + this.duration * 60 * 1000);
     const conflicting = await this.constructor.findOne({
       doctorId: this.doctorId,
       deleted: false,
@@ -183,7 +192,7 @@ appointmentSchema.pre('findOneAndUpdate', async function (next) {
 });
 
 appointmentSchema.post('save', function (doc) {
-  console.log(`Appointment ${doc.appointmentId} saved by ${doc.createdBy}`);
+  logger.info(`Appointment ${doc.appointmentId} saved by ${doc.createdBy}`);
 });
 
 appointmentSchema.pre('find', function () {
